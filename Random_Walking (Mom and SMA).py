@@ -7,6 +7,33 @@ import matplotlib.pyplot as plt
 random_days = 12_599
 
 
+def dji_and_random_hist(make_hist: bool = True, bins: int = 100, log: bool = False) -> (float, float):
+    dji_df = pd.read_csv('database/DJIndex.csv')
+    perc_cng_index = np.array(dji_df.Close)[1:] / np.array(dji_df.Close)[:-1]
+    # perc_cng = (perc_cng - np.mean(perc_cng)) / np.std(perc_cng, ddof=1)
+
+    # Random
+    mu, sigma = np.mean(perc_cng_index), np.std(perc_cng_index, ddof=1)
+    perc_cng_random = np.random.normal(mu, sigma, 30_000)
+    # perc_random = (perc_random - np.mean(perc_random)) / np.std(perc_random, ddof=1)
+
+    if make_hist:
+        plt.hist(x=perc_cng_index, bins=bins, density=True, range=(0.80, 1.2), log=log)
+        plt.hist(x=perc_cng_random, bins=bins, density=True, range=(0.80, 1.2), alpha=.5, log=log)
+        plt.show()
+
+    return mu, sigma
+
+
+def calc_metrics(capital, years: float = random_days / 252):
+    np_capital = np.array(capital)
+    cagr = ((np_capital[-1] / np_capital[0]) ** (1 / years) - 1) * 100
+    st_dev = np.std(np_capital[1:] / np_capital[:-1] - 1) * np.sqrt(252)
+    draw_down = tl.draw_down(list(np_capital))
+
+    return cagr, st_dev, draw_down
+
+
 def momentum(capital: np.array, perc_random: np.array, buy_hold_text: str):
     df = pd.DataFrame({'capital': capital})
     best_mom = np.array([0, 0, 0])
@@ -17,7 +44,7 @@ def momentum(capital: np.array, perc_random: np.array, buy_hold_text: str):
         # Добавим momentum. Он отображает, сменили мы ВЧЕРА на закрытии актив, или нет.
         momentum = capital[22 * mom:] / capital[:-22 * mom]
         momentum = np.insert(momentum, [0] * 22 * mom, 0)
-        df[f"momentum_{mom}"] =  momentum
+        df[f"momentum_{mom}"] = momentum
 
         df[f"mom_{mom}_check"] = [np.nan] * len(df)
         for i in range(22 * mom, len(capital), 22):
@@ -32,13 +59,11 @@ def momentum(capital: np.array, perc_random: np.array, buy_hold_text: str):
         df[f'mom_{mom}_capital'] = np.cumprod(df[f'mom_{mom}_capital'])
 
         plt.plot(range(1, len(capital) + 1), df[f'mom_{mom}_capital'], label=f'Mom_{mom}')
-        np_capital = np.array(df[f'mom_{mom}_capital'])
-        cagr = ((np_capital[-1] / np_capital[0]) ** (1 / years) - 1) * 100
-        st_dev = np.std(np_capital[1:] / np_capital[:-1] - 1) * np.sqrt(252)
-        draw_down = tl.draw_down(list(np_capital))
+
+        cagr, st_dev, draw_down = calc_metrics(df[f'mom_{mom}_capital'])
+        best_mom = np.vstack((best_mom, [cagr, st_dev, draw_down]))
         # print(f"Mom: {mom}, CAGR: {cagr}, St_dev: {st_dev}, Down: {draw_down}")
         # print('----------------next mom--------------------------------------')
-        best_mom = np.vstack((best_mom, [cagr, st_dev, draw_down]))
 
     best_mom_number = np.where(best_mom == np.max(best_mom[:, 0]))[0][0]
     print(buy_hold_text)
@@ -71,36 +96,23 @@ def sma(capital: np.array, perc_random: np.array, buy_hold_text: str):
         df.loc[df[f'sma_{sma}_check'].values, f'sma_{sma}_capital'] = df['perc_cng'][df[f'sma_{sma}_check'].values]
         df[f'sma_{sma}_capital'] = np.cumprod(df[f'sma_{sma}_capital'])
 
-        # tl.save_csv('database', 'test', df)
-
         plt.plot(range(1, len(capital) + 1), df[f'sma_{sma}_capital'], label=f'SMA_{sma}')
-        np_capital = np.array(df[f'sma_{sma}_capital'])
-        cagr = ((np_capital[-1] / np_capital[0]) ** (1 / years) - 1) * 100
-        st_dev = np.std(np_capital[1:] / np_capital[:-1] - 1) * np.sqrt(252)
-        draw_down = tl.draw_down(list(np_capital))
+
+        cagr, st_dev, draw_down = calc_metrics(df[f'sma_{sma}_capital'])
+        best_sma = np.vstack((best_sma, [cagr, st_dev, draw_down]))
         # print(f"Sma: {sma}, CAGR: {cagr}, St_dev: {st_dev}, Down: {draw_down}")
         # print('----------------next mom--------------------------------------')
-        best_sma = np.vstack((best_sma, [cagr, st_dev, draw_down]))
 
     best_sma_number = np.where(best_sma == np.max(best_sma[:, 0]))[0][0]
     print(buy_hold_text)
     print(f"best_sma is {list(range(0, 425, 25))[best_sma_number]} with: {best_sma[best_sma_number]}")
     print('----------------next------------------------------------------')
+    # tl.save_csv('database', 'test', df)
     plt.show()
 
 
 # Load DJI data
-dji_df = pd.read_csv('database/DJIndex.csv')
-perc_cng = np.array(dji_df.Close)[1:] / np.array(dji_df.Close)[:-1]
-# perc_cng = (perc_cng - np.mean(perc_cng)) / np.std(perc_cng, ddof=1)
-# plt.hist(x=perc_cng, bins=100, density=True, range=(0.80, 1.2), log=True)
-
-# Random
-mu, sigma = np.mean(perc_cng), np.std(perc_cng, ddof=1)
-# perc_random = np.random.normal(mu, sigma, 30_000)
-# perc_random = (perc_random - np.mean(perc_random)) / np.std(perc_random, ddof=1)
-# plt.hist(x=perc_random, bins=100, density=True, range=(0.80, 1.2), alpha=.5, log=True)
-# plt.show()
+mu, sigma = dji_and_random_hist(make_hist=False)
 
 for i in range(100):
     # np.random.seed(17)
@@ -109,14 +121,10 @@ for i in range(100):
     # Buy and hold
     capital = np.cumprod(perc_random)
     capital = np.insert(capital, 0, 1)
+    cagr, st_dev, draw_down = calc_metrics(capital)
+    buy_hold_text = f"BH: CAGR: {cagr}, St_dev: {st_dev}, Down: {draw_down}"
+
     plt.plot(range(1, len(capital) + 1), capital, label='Buy_hold')
-
-    years = random_days / 252
-    cagr = ((capital[-1] / capital[0]) ** (1 / years) - 1) * 100
-    st_dev = np.std(capital[1:] / capital[:-1] - 1) * np.sqrt(252)
-    draw_down = tl.draw_down(list(capital))
-    buy_hold_text = f"Mom: {0}, CAGR: {cagr}, St_dev: {st_dev}, Down: {draw_down}"
-
     momentum(capital, perc_random, buy_hold_text)
 
     plt.plot(range(1, len(capital) + 1), capital, label='Buy_hold')
